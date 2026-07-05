@@ -59,8 +59,22 @@ static void upload_thread(void *arg1, void *arg2, void *arg3) {
         air_measurement_t airSample = {0};
         int ret;
         k_sem_take(&upload_request_sem, K_SECONDS(DATA_UPLOAD_INTERVAL_S));
+        // turn on modem and connect to network
         LOG_INF("Upload data");
+        while (k_msgq_peek(&air_sample_msgq, &airSample) == 0) {
             ret = data_upload(airSample.temperature, airSample.humidity);
+            if (ret == 0) {
+                k_msgq_get(&air_sample_msgq, &airSample, K_NO_WAIT);
+            }
+            else {
+                LOG_ERR("Data upload failed err: %d, will retry later", ret);
+                break;
+            }
+        }
+        if (k_msgq_num_used_get(&air_sample_msgq) == 0) {
+            LOG_INF("All data uploaded, queue empty");
+        }
+        // turn off modem and go back to sleep
     }
 }
 
