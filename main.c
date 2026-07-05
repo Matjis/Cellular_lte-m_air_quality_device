@@ -69,19 +69,26 @@ int data_upload(uint8_t temperature, uint8_t humidity, uint64_t timestamp) {
 static void sensor_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
         static air_measurement_t airSample = {0};
-        measure_air_quality(&airSample.temperature, &airSample.humidity);
-        airSample.timestamp_s = unix_time + (k_uptime_get() / MSEC_PER_SEC);
-        LOG_INF("Temp: %d, Humidity: %d , Time: %llu",
-                airSample.temperature, airSample.humidity, airSample.timestamp_s);
 
-        int ret = k_msgq_put(&air_sample_msgq, &airSample, K_NO_WAIT);
-        if (ret != 0) {
-            LOG_WRN("Sample queue full, dropping sample");
+        int ret = measure_air_quality(&airSample.temperature, &airSample.humidity);
+        if (ret == 0) {
+            airSample.timestamp_s = unix_time + (k_uptime_get() / MSEC_PER_SEC);
+
+            int ret2 = k_msgq_put(&air_sample_msgq, &airSample, K_NO_WAIT);
+            LOG_INF("Samples in queue: %d", k_msgq_num_used_get(&air_sample_msgq));
+            if (ret2 != 0) {
+                LOG_WRN("Sample queue full, dropping sample");
+            }
+
+            if (k_msgq_num_used_get(&air_sample_msgq) >= HIGH_WATER_MARK) {
+                LOG_INF("High-water mark reached");
+                k_sem_give(&upload_request_sem);  // for ring buffer 80% high watermark
+            }
         }
-        if (k_msgq_num_used_get(&air_sample_msgq) >= HIGH_WATER_MARK) {
-            LOG_INF("High-water mark reached");
-            k_sem_give(&upload_request_sem);  // for ring buffer 80% high watermark
+        else {
+            LOG_ERR("Sensor read failed, err: %d", ret);
         }
+
         k_sleep(K_SECONDS(SENSOR_READ_INTERVL_S));
     }
 }
@@ -89,13 +96,13 @@ static void sensor_thread(void *arg1, void *arg2, void *arg3) {
 static void upload_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
         air_measurement_t airSample = {0};
-        int ret;
         k_sem_take(&upload_request_sem, K_SECONDS(DATA_UPLOAD_INTERVAL_S));
         // turn on modem and connect to network
         // unix_time should be set at this point too from network received time
+
         LOG_INF("Data upload started");
         while (k_msgq_peek(&air_sample_msgq, &airSample) == 0) {
-            ret = data_upload(airSample.temperature, airSample.humidity, airSample.timestamp_s);
+            int ret = data_upload(airSample.temperature, airSample.humidity, airSample.timestamp_s);
             LOG_INF("Data uploaded: Temp: %d, Humidity: %d , Time: %llu",
                     airSample.temperature, airSample.humidity, airSample.timestamp_s);
             if (ret == 0) {
