@@ -42,6 +42,14 @@ static void sensor_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
         static air_measurement_t airSample = {0};
         measure_air_quality(&airSample.temperature, &airSample.humidity);
+        int ret = k_msgq_put(&air_sample_msgq, &airSample, K_NO_WAIT);
+        if (ret != 0) {
+            LOG_WRN("Sample queue full, dropping sample");
+        }
+        if (k_msgq_num_used_get(&air_sample_msgq) >= HIGH_WATER_MARK) {
+            LOG_INF("High-water mark reached");
+            k_sem_give(&upload_request_sem);  // for ring buffer 80% high watermark
+        }
         k_sleep(K_SECONDS(SENSOR_READ_INTERVL_S));
     }
 }
