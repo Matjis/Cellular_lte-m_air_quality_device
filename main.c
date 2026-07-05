@@ -16,18 +16,39 @@ static K_SEM_DEFINE(upload_request_sem, 0, 1);
 // can be with module name, like not main, but air sensor, usefull for multiple source files
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
+typedef struct{
+    int time;
+    uint8_t temperature;
+    uint8_t humidity;
+} air_measurement_t;
+
+int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
+    (*temperature)++; //= 22;
+    (*humidity)++; //= 50;
+    LOG_INF("Temp: %d, Humidity: %d ", *temperature, *humidity);
+    return 0;
+}
+
+int data_upload(uint8_t temperature, uint8_t humidity) {
+    LOG_INF("Data uploaded: Temp: %d, Humidity: %d ", temperature, humidity);
+    return 0;
+}
+
 static void sensor_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
-        LOG_INF("Read sensor");
-        // k_sem_give(&upload_request_sem);  // for ring buffer 80% high watermark
+        static air_measurement_t airSample = {0};
+        measure_air_quality(&airSample.temperature, &airSample.humidity);
         k_sleep(K_SECONDS(SENSOR_READ_INTERVL_S));
     }
 }
 
 static void upload_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
-        int ret = k_sem_take(&upload_request_sem, K_SECONDS(DATA_UPLOAD_INTERVAL_S));
+        air_measurement_t airSample = {0};
+        int ret;
+        k_sem_take(&upload_request_sem, K_SECONDS(DATA_UPLOAD_INTERVAL_S));
         LOG_INF("Upload data");
+            ret = data_upload(airSample.temperature, airSample.humidity);
     }
 }
 
