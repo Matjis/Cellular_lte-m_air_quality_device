@@ -1,4 +1,5 @@
 #include <zephyr/kernel.h>
+#include <stdint.h>
 #include <errno.h>
 #include <zephyr/logging/log.h>
 
@@ -13,6 +14,7 @@
 // these priorities will help with upload not blocking sensor reading
 #define SENSOR_THREAD_PRIORITY      1
 #define UPLOAD_THREAD_PRIORITY      2
+
 #define SENSOR_DATA_QUEUE_SIZE      10
 #define HIGH_WATER_MARK             ((SENSOR_DATA_QUEUE_SIZE * 8) / 10)
 
@@ -22,12 +24,15 @@ static K_SEM_DEFINE(upload_request_sem, 0, 1);
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 typedef struct{
-    int time;
+    uint64_t timestamp_s;
     uint8_t temperature;
     uint8_t humidity;
 } air_measurement_t;
 
+static uint64_t unix_time;
+
 K_MSGQ_DEFINE(air_sample_msgq, sizeof(air_measurement_t), SENSOR_DATA_QUEUE_SIZE, 1);
+
 int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
     (*temperature)++; //= 22;
     (*humidity)++; //= 50;
@@ -52,8 +57,6 @@ int data_upload(uint8_t temperature, uint8_t humidity) {
     if (retry_count >= MAX_UPLOAD_RETRY_COUNT) {
 		return -ETIMEDOUT;
 	}
-
-    LOG_INF("Data uploaded: Temp: %d, Humidity: %d ", temperature, humidity);
     return 0;
 }
 
@@ -61,6 +64,7 @@ static void sensor_thread(void *arg1, void *arg2, void *arg3) {
     while (1) {
         static air_measurement_t airSample = {0};
         measure_air_quality(&airSample.temperature, &airSample.humidity);
+        airSample.timestamp_s = unix_time + (k_uptime_get() / MSEC_PER_SEC);
         int ret = k_msgq_put(&air_sample_msgq, &airSample, K_NO_WAIT);
         if (ret != 0) {
             LOG_WRN("Sample queue full, dropping sample");
@@ -79,9 +83,12 @@ static void upload_thread(void *arg1, void *arg2, void *arg3) {
         int ret;
         k_sem_take(&upload_request_sem, K_SECONDS(DATA_UPLOAD_INTERVAL_S));
         // turn on modem and connect to network
-        LOG_INF("Upload data");
+        // unix_time should be set at this point too from network received time
+        LOG_INF("Data upload started");
         while (k_msgq_peek(&air_sample_msgq, &airSample) == 0) {
             ret = data_upload(airSample.temperature, airSample.humidity);
+            LOG_INF("Data uploaded: Temp: %d, Humidity: %d , Time: %llu",
+                    airSample.temperature, airSample.humidity, airSample.timestamp_s);
             if (ret == 0) {
                 k_msgq_get(&air_sample_msgq, &airSample, K_NO_WAIT);
             }
