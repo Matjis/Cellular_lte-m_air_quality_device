@@ -1,9 +1,11 @@
 #include <zephyr/kernel.h>
+#include <errno.h>
 #include <zephyr/logging/log.h>
 
 #define SENSOR_READ_INTERVL_S       (5 * 60)
 #define DATA_UPLOAD_INTERVAL_S      (30 * 60)
-#define MAX_RETRY_COUNT             5
+#define MAX_UPLOAD_RETRY_COUNT      3
+#define UPLOAD_BACKOFF_TIME_S       5
 
 // sizes are a guess, should do stack analyze to get more precise values
 #define SENSOR_THREAD_STACK_SIZE    2048
@@ -34,6 +36,23 @@ int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
 }
 
 int data_upload(uint8_t temperature, uint8_t humidity) {
+    uint8_t retry_count = 0;
+    // uint8_t backoff_multiplier = 1;
+    // for (retry_count; retry_count < MAX_UPLOAD_RETRY_COUNT; retry_count++) {
+    //     if (data_send_modem() == 0) {
+    //         break;
+    //     }
+    //     else {
+    //         LOG_ERR("Data upload failed, retrying... attempt %d", retry_count);
+    //         k_sleep(K_SECONDS(UPLOAD_BACKOFF_TIME_S * backoff_multiplier)); // 5, 10, 15 sec
+    //         backoff_multiplier++;
+    //     }
+    // }
+
+    if (retry_count >= MAX_UPLOAD_RETRY_COUNT) {
+		return -ETIMEDOUT;
+	}
+
     LOG_INF("Data uploaded: Temp: %d, Humidity: %d ", temperature, humidity);
     return 0;
 }
