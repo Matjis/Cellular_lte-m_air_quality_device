@@ -35,8 +35,14 @@ K_MSGQ_DEFINE(air_sample_msgq, sizeof(air_measurement_t), SENSOR_DATA_QUEUE_SIZE
 
 int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
     (*temperature)++; //= 22;
+    // temp under -40 and over +70 C should give some warning
     (*humidity)++; //= 50;
-    LOG_INF("Temp: %d, Humidity: %d ", *temperature, *humidity);
+    // probably should check for humidity over 100% and under 0% and give warning
+
+    // data can come from sensor or other function, than can add error check,
+    // if (data_read_from_sensor() != 0) {
+    //     return -EIO;
+    // }
     return 0;
 }
 
@@ -65,6 +71,9 @@ static void sensor_thread(void *arg1, void *arg2, void *arg3) {
         static air_measurement_t airSample = {0};
         measure_air_quality(&airSample.temperature, &airSample.humidity);
         airSample.timestamp_s = unix_time + (k_uptime_get() / MSEC_PER_SEC);
+        LOG_INF("Temp: %d, Humidity: %d , Time: %llu",
+                airSample.temperature, airSample.humidity, airSample.timestamp_s);
+
         int ret = k_msgq_put(&air_sample_msgq, &airSample, K_NO_WAIT);
         if (ret != 0) {
             LOG_WRN("Sample queue full, dropping sample");
