@@ -1,15 +1,18 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#define SENSOR_READ_INTERVL_S   (5 * 60)
-#define DATA_UPLOAD_INTERVAL_S  (30 * 60)
+#define SENSOR_READ_INTERVL_S       (5 * 60)
+#define DATA_UPLOAD_INTERVAL_S      (30 * 60)
+#define MAX_RETRY_COUNT             5
 
-// Sizes are a guess, should do stack analyze to get more precise values
-#define SENSOR_THREAD_STACK_SIZE  2048
-#define UPLOAD_THREAD_STACK_SIZE  4096
-// These priorities will help with upload not blocking sensor reading
-#define SENSOR_THREAD_PRIORITY    1
-#define UPLOAD_THREAD_PRIORITY    2
+// sizes are a guess, should do stack analyze to get more precise values
+#define SENSOR_THREAD_STACK_SIZE    2048
+#define UPLOAD_THREAD_STACK_SIZE    4096
+// these priorities will help with upload not blocking sensor reading
+#define SENSOR_THREAD_PRIORITY      1
+#define UPLOAD_THREAD_PRIORITY      2
+#define SENSOR_DATA_QUEUE_SIZE      10
+#define HIGH_WATER_MARK             ((SENSOR_DATA_QUEUE_SIZE * 8) / 10)
 
 static K_SEM_DEFINE(upload_request_sem, 0, 1);
 
@@ -22,6 +25,7 @@ typedef struct{
     uint8_t humidity;
 } air_measurement_t;
 
+K_MSGQ_DEFINE(air_sample_msgq, sizeof(air_measurement_t), SENSOR_DATA_QUEUE_SIZE, 1);
 int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
     (*temperature)++; //= 22;
     (*humidity)++; //= 50;
