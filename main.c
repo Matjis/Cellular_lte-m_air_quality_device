@@ -46,11 +46,11 @@ int measure_air_quality(uint8_t *temperature, uint8_t *humidity) {
     return 0;
 }
 
-int data_upload(uint8_t temperature, uint8_t humidity) {
+int data_upload(uint8_t temperature, uint8_t humidity, uint64_t timestamp) {
     uint8_t retry_count = 0;
     // uint8_t backoff_multiplier = 1;
     // for (retry_count; retry_count < MAX_UPLOAD_RETRY_COUNT; retry_count++) {
-    //     if (data_send_modem() == 0) {
+    //     if (data_send_modem(temperature, humidity, timestamp) == 0) {
     //         break;
     //     }
     //     else {
@@ -95,7 +95,7 @@ static void upload_thread(void *arg1, void *arg2, void *arg3) {
         // unix_time should be set at this point too from network received time
         LOG_INF("Data upload started");
         while (k_msgq_peek(&air_sample_msgq, &airSample) == 0) {
-            ret = data_upload(airSample.temperature, airSample.humidity);
+            ret = data_upload(airSample.temperature, airSample.humidity, airSample.timestamp_s);
             LOG_INF("Data uploaded: Temp: %d, Humidity: %d , Time: %llu",
                     airSample.temperature, airSample.humidity, airSample.timestamp_s);
             if (ret == 0) {
